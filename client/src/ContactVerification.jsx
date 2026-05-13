@@ -1,22 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  apiUrl,
+  errorMessageFromResponse,
+  networkErrorMessage,
+  readJsonResponse,
+} from "./lib/apiBase";
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function apiUrl(path) {
-  const base = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-  return `${base}${path}`;
-}
-
-async function readJson(res) {
-  const text = await res.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {};
-  }
-}
 
 export default function ContactVerification() {
   const [email, setEmail] = useState("");
@@ -129,11 +120,11 @@ export default function ContactVerification() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed }),
       });
-      const data = await readJson(res);
+      const data = await readJsonResponse(res);
       if (!res.ok) {
         const wait = Number(data.retryAfterSec) || 0;
         if (wait > 0) setResendIn(wait);
-        showToast(data.error || "Could not send OTP.", "error");
+        showToast(errorMessageFromResponse(res, data), "error");
         return;
       }
       setOtpSent(true);
@@ -142,7 +133,7 @@ export default function ContactVerification() {
       showToast(data.message || "OTP sent. Check your inbox.", "success");
       setTimeout(() => focusOtpIndex(0), 50);
     } catch {
-      showToast("Network error. Is the server running?", "error");
+      showToast(networkErrorMessage(), "error");
     } finally {
       setSending(false);
     }
@@ -165,12 +156,12 @@ export default function ContactVerification() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed, otp: otpString }),
       });
-      const data = await readJson(res);
+      const data = await readJsonResponse(res);
       if (!res.ok) {
         if (data.code === "OTP_EXPIRED") {
           showToast("That code expired. Request a new OTP.", "error");
         } else {
-          showToast(data.error || "Verification failed.", "error");
+          showToast(errorMessageFromResponse(res, data), "error");
         }
         return;
       }
@@ -178,7 +169,7 @@ export default function ContactVerification() {
       setVerificationToken(data.verificationToken || "");
       showToast(data.message || "Email verified.", "success");
     } catch {
-      showToast("Network error. Try again.", "error");
+      showToast(networkErrorMessage(), "error");
     } finally {
       setVerifying(false);
     }
@@ -209,15 +200,15 @@ export default function ContactVerification() {
           verificationToken,
         }),
       });
-      const data = await readJson(res);
+      const data = await readJsonResponse(res);
       if (!res.ok) {
-        showToast(data.error || "Could not send message.", "error");
+        showToast(errorMessageFromResponse(res, data), "error");
         return;
       }
       showToast(data.message || "Message sent.", "success");
       setMessage("");
     } catch {
-      showToast("Network error. Try again.", "error");
+      showToast(networkErrorMessage(), "error");
     } finally {
       setSubmitting(false);
     }

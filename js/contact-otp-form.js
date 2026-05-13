@@ -1,29 +1,79 @@
 /**
- * Browser contact form + OTP. Expects a running API (see server/) at the same
- * origin or at window.PORTFOLIO_API (no trailing slash), e.g. set before this script:
- *   <script>window.PORTFOLIO_API = "https://your-api.onrender.com";</script>
+ * Contact form + OTP (static pages: index.html, contact.html).
+ *
+ * API base resolution (first match wins):
+ * 1. window.PORTFOLIO_API — manual override (staging, forked backend, etc.)
+ * 2. localhost / 127.0.0.1 page host → http://localhost:3000 (local API)
+ * 3. Otherwise → production Render API below
  */
 (function () {
   "use strict";
 
+  var PRODUCTION_API_BASE = "https://portfolio-website-wci0.onrender.com";
+  var LOCAL_DEV_API_BASE = "http://localhost:3000";
+
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  function apiBase() {
-    var raw = window.PORTFOLIO_API;
-    if (raw == null || raw === "") return "";
-    return String(raw).replace(/\/$/, "");
+  function resolveApiBase() {
+    var override = window.PORTFOLIO_API;
+    if (typeof override === "string" && override.trim() !== "") {
+      return override.trim().replace(/\/$/, "");
+    }
+    try {
+      var host = window.location.hostname;
+      if (host === "localhost" || host === "127.0.0.1") {
+        return LOCAL_DEV_API_BASE;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return PRODUCTION_API_BASE;
   }
 
   function apiUrl(path) {
-    var b = apiBase();
+    var base = resolveApiBase();
     if (!path.startsWith("/")) path = "/" + path;
-    return b + path;
+    return base + path;
   }
 
-  function readJson(res) {
-    return res.json().catch(function () {
-      return {};
+  function readJsonFromResponse(res) {
+    return res.text().then(function (text) {
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        return {};
+      }
     });
+  }
+
+  function errorMessageFromResponse(res, data) {
+    if (data && typeof data.error === "string" && data.error.trim()) {
+      return data.error.trim();
+    }
+    if (res.status === 503) {
+      return "Email service is not configured or temporarily unavailable.";
+    }
+    if (res.status === 429) {
+      return "Too many attempts. Please wait before trying again.";
+    }
+    if (res.status >= 500) {
+      return "Something went wrong on the server. Please try again later.";
+    }
+    if (res.status === 400) {
+      return "Invalid request. Please check your input.";
+    }
+    if (res.status === 403) {
+      return "Please verify your email before sending.";
+    }
+    return "Request failed. Please try again.";
+  }
+
+  function networkErrorMessage() {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return "You appear to be offline.";
+    }
+    return "Could not reach the server. Check your connection and try again.";
   }
 
   function showStatus(el, text, kind) {
@@ -130,21 +180,17 @@
           body: JSON.stringify({ email: email }),
         })
           .then(function (res) {
-            return readJson(res).then(function (data) {
+            return readJsonFromResponse(res).then(function (data) {
               return { res: res, data: data };
             });
           })
-          .then(function (_ref) {
-            var res = _ref.res;
-            var data = _ref.data;
+          .then(function (pair) {
+            var res = pair.res;
+            var data = pair.data;
             if (!res.ok) {
               var wait = Number(data.retryAfterSec) || 0;
               if (wait > 0) setResendCountdown(wait);
-              showStatus(
-                statusEl,
-                data.error || "Could not send verification code.",
-                "error"
-              );
+              showStatus(statusEl, errorMessageFromResponse(res, data), "error");
               sendBtn.disabled = wait > 0;
               return;
             }
@@ -158,11 +204,7 @@
             if (digitInputs[0]) digitInputs[0].focus();
           })
           .catch(function () {
-            showStatus(
-              statusEl,
-              "Network error. If the site is static-only, set window.PORTFOLIO_API to your API URL.",
-              "error"
-            );
+            showStatus(statusEl, networkErrorMessage(), "error");
             sendBtn.disabled = false;
           });
       });
@@ -189,13 +231,13 @@
           body: JSON.stringify({ email: email, otp: otp }),
         })
           .then(function (res) {
-            return readJson(res).then(function (data) {
+            return readJsonFromResponse(res).then(function (data) {
               return { res: res, data: data };
             });
           })
-          .then(function (_ref2) {
-            var res = _ref2.res;
-            var data = _ref2.data;
+          .then(function (pair) {
+            var res = pair.res;
+            var data = pair.data;
             if (!res.ok) {
               if (data.code === "OTP_EXPIRED") {
                 showStatus(
@@ -204,11 +246,7 @@
                   "error"
                 );
               } else {
-                showStatus(
-                  statusEl,
-                  data.error || "Verification failed.",
-                  "error"
-                );
+                showStatus(statusEl, errorMessageFromResponse(res, data), "error");
               }
               verifyBtn.disabled = false;
               return;
@@ -223,7 +261,7 @@
             onVerified();
           })
           .catch(function () {
-            showStatus(statusEl, "Network error. Try again.", "error");
+            showStatus(statusEl, networkErrorMessage(), "error");
             verifyBtn.disabled = false;
           });
       });
@@ -282,19 +320,15 @@
         }),
       })
         .then(function (res) {
-          return readJson(res).then(function (data) {
+          return readJsonFromResponse(res).then(function (data) {
             return { res: res, data: data };
           });
         })
-        .then(function (_ref3) {
-          var res = _ref3.res;
-          var data = _ref3.data;
+        .then(function (pair) {
+          var res = pair.res;
+          var data = pair.data;
           if (!res.ok) {
-            showStatus(
-              statusEl,
-              data.error || "Could not send your message.",
-              "error"
-            );
+            showStatus(statusEl, errorMessageFromResponse(res, data), "error");
             if (submitBtn) submitBtn.disabled = false;
             return;
           }
@@ -308,7 +342,7 @@
           if (sendBtn) sendBtn.textContent = "Verify email";
         })
         .catch(function () {
-          showStatus(statusEl, "Network error. Try again.", "error");
+          showStatus(statusEl, networkErrorMessage(), "error");
           if (submitBtn) submitBtn.disabled = false;
         });
     });
