@@ -1,16 +1,21 @@
 /** Production backend (Render). Override with `VITE_API_BASE_URL` if needed. */
 export const API_BASE_PRODUCTION =
-  "https://portfolio-website-wci0.onrender.com";
+  "https://portfolio-website-fajr.onrender.com";
 
 /**
  * API origin for fetch calls.
  * - Dev (`vite`): empty string → same origin as Vite, `/api/*` proxied to local server.
- * - Prod build: Render URL unless `VITE_API_BASE_URL` is set (e.g. staging).
+ * - Prod on same Render host: empty string → `/api/*` on current origin.
+ * - Prod elsewhere (e.g. Vercel): Render URL above unless `VITE_API_BASE_URL` is set.
  */
 export function getApiBase() {
   const fromEnv = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   if (import.meta.env.DEV) return "";
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host.endsWith(".onrender.com")) return "";
+  }
   return API_BASE_PRODUCTION;
 }
 

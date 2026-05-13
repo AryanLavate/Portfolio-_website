@@ -4,12 +4,13 @@
  * API base resolution (first match wins):
  * 1. window.PORTFOLIO_API — manual override (staging, forked backend, etc.)
  * 2. localhost / 127.0.0.1 page host → http://localhost:3000 (local API)
- * 3. Otherwise → production Render API below
+ * 3. Page on *.onrender.com (same app serves API) → same origin (empty base)
+ * 4. Otherwise → production Render API below (e.g. Vercel → Render)
  */
 (function () {
   "use strict";
 
-  var PRODUCTION_API_BASE = "https://portfolio-website-wci0.onrender.com";
+  var PRODUCTION_API_BASE = "https://portfolio-website-fajr.onrender.com";
   var LOCAL_DEV_API_BASE = "http://localhost:3000";
 
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,6 +24,9 @@
       var host = window.location.hostname;
       if (host === "localhost" || host === "127.0.0.1") {
         return LOCAL_DEV_API_BASE;
+      }
+      if (host.endsWith(".onrender.com")) {
+        return "";
       }
     } catch (e) {
       /* ignore */
