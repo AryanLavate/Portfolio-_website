@@ -20,6 +20,24 @@ if (process.env.TRUST_PROXY === "1" || process.env.RENDER === "true") {
   app.set("trust proxy", 1);
 }
 
+/** Vercel / other static hosts call the API on Render — browsers require CORS. */
+function getCorsOriginOption() {
+  const list = (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length ? list : true;
+}
+
+app.use(
+  cors({
+    origin: getCorsOriginOption(),
+    methods: ["GET", "HEAD", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+    maxAge: 86_400,
+  })
+);
+
 app.use(express.json({ limit: "64kb" }));
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
