@@ -30,11 +30,6 @@ function isBuiltInAllowedOrigin(origin) {
     return false;
   }
   const { protocol, hostname } = url;
-  const isLocal =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "[::1]";
-  if (isLocal) return protocol === "http:" || protocol === "https:";
   if (protocol !== "https:") return false;
   return (
     hostname.endsWith(".vercel.app") ||

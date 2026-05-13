@@ -4,7 +4,8 @@ import { defineConfig, loadEnv } from "vite";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const proxyTarget =
-    env.VITE_PROXY_API_TARGET?.trim() || "http://localhost:3000";
+    env.VITE_PROXY_API_TARGET?.trim() ||
+    "https://portfolio-website-fajr.onrender.com";
 
   return {
     plugins: [react()],
