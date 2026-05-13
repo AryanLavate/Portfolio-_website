@@ -173,8 +173,11 @@ function verifyContactToken(token) {
 }
 
 function getTransporter() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const user = String(process.env.SMTP_USER || "").trim();
+  /** Gmail app passwords are 16 chars; Google often shows them with spaces — strip them. */
+  const pass = String(process.env.SMTP_PASS || "")
+    .replace(/\s+/g, "")
+    .trim();
   if (!user || !pass) return null;
 
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
@@ -187,22 +190,32 @@ function getTransporter() {
 
   const auth = { user, pass };
 
+  const timeouts = {
+    connectionTimeout: 25_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 25_000,
+  };
+
   if (useSsl) {
     return nodemailer.createTransport({
       host,
       port: 465,
       secure: true,
-      family: 4,
       auth,
+      ...timeouts,
     });
   }
 
+  const port =
+    Number.isFinite(portNum) && portNum > 0 ? portNum : 587;
+
   return nodemailer.createTransport({
     host,
-    port: Number.isFinite(portNum) && portNum > 0 ? portNum : 587,
+    port,
     secure: false,
-    family: 4,
+    requireTLS: port === 587,
     auth,
+    ...timeouts,
   });
 }
 
@@ -378,7 +391,12 @@ async function handleSendOtp(req, res) {
       html: buildOtpEmailHtml(otp),
     });
   } catch (err) {
-    console.error("[send-otp] sendMail failed:", err);
+    console.error(
+      "[send-otp] sendMail failed:",
+      err?.message,
+      err?.code,
+      err?.responseCode
+    );
     otpByEmail.delete(email);
     return res.status(500).json({
       ok: false,
@@ -527,7 +545,12 @@ async function handleContact(req, res) {
       )}&gt;</p><p>${escapeHtml(messageStr).replace(/\n/g, "<br>")}</p>`,
     });
   } catch (err) {
-    console.error("[contact] sendMail failed:", err);
+    console.error(
+      "[contact] sendMail failed:",
+      err?.message,
+      err?.code,
+      err?.responseCode
+    );
     return res.status(500).json({
       ok: false,
       error: "Could not send your message. Please try again later.",

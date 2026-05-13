@@ -1205,15 +1205,15 @@ body.is-dragging-letter {
   }
 }
 
-/* —— Contact page: fill viewport (below fixed header) —— */
+/* —— Contact page: 80vh layout (below fixed header) —— */
 body.page-contact {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 80vh;
+  min-height: 80dvh;
 }
 
 body.page-contact .page-inner {
-  min-height: calc(100vh - var(--header-h));
-  min-height: calc(100dvh - var(--header-h));
+  min-height: calc(80vh - var(--header-h));
+  min-height: calc(80dvh - var(--header-h));
   display: flex;
   flex-direction: column;
 }
