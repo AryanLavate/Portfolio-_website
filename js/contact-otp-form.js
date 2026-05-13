@@ -1,281 +1,318 @@
-// ===============================
-// COMPLETE index.js BACKEND CODE
-// ===============================
+/**
+ * Browser contact form + OTP. Expects a running API (see server/) at the same
+ * origin or at window.PORTFOLIO_API (no trailing slash), e.g. set before this script:
+ *   <script>window.PORTFOLIO_API = "https://your-api.onrender.com";</script>
+ */
+(function () {
+  "use strict";
 
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import nodemailer from "nodemailer";
-import crypto from "crypto";
+  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-dotenv.config();
+  function apiBase() {
+    var raw = window.PORTFOLIO_API;
+    if (raw == null || raw === "") return "";
+    return String(raw).replace(/\/$/, "");
+  }
 
-const app = express();
+  function apiUrl(path) {
+    var b = apiBase();
+    if (!path.startsWith("/")) path = "/" + path;
+    return b + path;
+  }
 
-app.use(express.json());
-
-app.use(
-  cors({
-    origin: "*",
-  })
-);
-
-// ===============================
-// OTP + VERIFICATION STORAGE
-// ===============================
-
-const otpStore = {};
-const verifiedUsers = {};
-
-// ===============================
-// MAIL TRANSPORTER
-// ===============================
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
-// ===============================
-// SEND OTP API
-// ===============================
-
-app.post("/api/send-otp", async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        ok: false,
-        error: "Email is required",
-      });
-    }
-
-    // Generate 6 digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Expiry time = 5 mins
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-
-    // Save OTP
-    otpStore[email] = {
-      otp,
-      expiresAt,
-    };
-
-    // Send email
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to: email,
-      subject: "Verify Your Email",
-      html: `
-        <div style="font-family:sans-serif;padding:20px;">
-          <h2>Email Verification</h2>
-          <p>Your OTP code is:</p>
-          
-          <h1 style="
-            letter-spacing:5px;
-            color:#2563eb;
-          ">
-            ${otp}
-          </h1>
-
-          <p>This code expires in 5 minutes.</p>
-        </div>
-      `,
-    });
-
-    return res.json({
-      ok: true,
-      message: "OTP sent successfully",
-      resendAfterSec: 30,
-    });
-  } catch (error) {
-    console.log(error);
-
-    return res.status(500).json({
-      ok: false,
-      error: "Failed to send OTP",
+  function readJson(res) {
+    return res.json().catch(function () {
+      return {};
     });
   }
-});
 
-// ===============================
-// VERIFY OTP API
-// ===============================
+  function showStatus(el, text, kind) {
+    if (!el) return;
+    el.hidden = !text;
+    el.textContent = text || "";
+    el.classList.remove("form-status--error", "form-status--success");
+    if (kind === "error") el.classList.add("form-status--error");
+    if (kind === "success") el.classList.add("form-status--success");
+  }
 
-app.post("/api/verify-otp", (req, res) => {
-  try {
-    const { email, otp } = req.body;
+  function digitsValue(inputs) {
+    return inputs
+      .map(function (i) {
+        return (i.value || "").replace(/\D/g, "");
+      })
+      .join("");
+  }
 
-    const savedOtp = otpStore[email];
+  function initForm(form) {
+    var emailInput = form.querySelector("[data-otp-email]");
+    var sendBtn = form.querySelector("[data-send-otp]");
+    var resendNote = form.querySelector("[data-resend-note]");
+    var otpWrap = form.querySelector("[data-otp-wrap]");
+    var digitInputs = Array.prototype.slice.call(
+      form.querySelectorAll("[data-otp-digit]")
+    );
+    var verifyBtn = form.querySelector("[data-verify-otp]");
+    var verifiedBox = form.querySelector("[data-verified-box]");
+    var changeEmailBtn = form.querySelector("[data-change-email]");
+    var submitBtn = form.querySelector("[data-submit-contact]");
+    var statusEl = form.querySelector("[data-form-status]");
 
-    if (!savedOtp) {
-      return res.status(400).json({
-        ok: false,
-        error: "OTP not found",
+    var verificationToken = null;
+    var resendTimer = null;
+    var resendSec = 0;
+
+    function clearResendTimer() {
+      if (resendTimer) clearInterval(resendTimer);
+      resendTimer = null;
+    }
+
+    function setResendCountdown(sec) {
+      clearResendTimer();
+      resendSec = Math.max(0, Math.floor(sec));
+      function tick() {
+        if (resendSec <= 0) {
+          clearResendTimer();
+          if (resendNote) resendNote.textContent = "";
+          if (sendBtn) sendBtn.disabled = false;
+          return;
+        }
+        if (resendNote)
+          resendNote.textContent = "Resend code in " + resendSec + "s";
+        if (sendBtn) sendBtn.disabled = true;
+        resendSec--;
+      }
+      tick();
+      resendTimer = setInterval(tick, 1000);
+    }
+
+    function resetOtpUi() {
+      digitInputs.forEach(function (el) {
+        el.value = "";
+      });
+      if (otpWrap) otpWrap.hidden = true;
+      if (verifiedBox) verifiedBox.hidden = true;
+      if (changeEmailBtn) changeEmailBtn.hidden = true;
+      verificationToken = null;
+      if (submitBtn) submitBtn.disabled = true;
+      clearResendTimer();
+      if (resendNote) resendNote.textContent = "";
+      if (sendBtn) sendBtn.disabled = false;
+    }
+
+    function onVerified() {
+      if (otpWrap) otpWrap.hidden = true;
+      if (verifiedBox) verifiedBox.hidden = false;
+      if (changeEmailBtn) changeEmailBtn.hidden = false;
+      if (submitBtn) submitBtn.disabled = false;
+      clearResendTimer();
+      if (resendNote) resendNote.textContent = "";
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Verified";
+      }
+    }
+
+    if (sendBtn) {
+      sendBtn.addEventListener("click", function () {
+        var email = (emailInput && emailInput.value) || "";
+        email = email.trim().toLowerCase();
+        if (!emailRe.test(email)) {
+          showStatus(statusEl, "Enter a valid email address.", "error");
+          return;
+        }
+
+        sendBtn.disabled = true;
+        showStatus(statusEl, "", null);
+
+        fetch(apiUrl("/api/send-otp"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email }),
+        })
+          .then(function (res) {
+            return readJson(res).then(function (data) {
+              return { res: res, data: data };
+            });
+          })
+          .then(function (_ref) {
+            var res = _ref.res;
+            var data = _ref.data;
+            if (!res.ok) {
+              var wait = Number(data.retryAfterSec) || 0;
+              if (wait > 0) setResendCountdown(wait);
+              showStatus(
+                statusEl,
+                data.error || "Could not send verification code.",
+                "error"
+              );
+              sendBtn.disabled = wait > 0;
+              return;
+            }
+            if (otpWrap) otpWrap.hidden = false;
+            setResendCountdown(Number(data.resendAfterSec) || 30);
+            showStatus(
+              statusEl,
+              data.message || "Check your inbox for the code.",
+              "success"
+            );
+            if (digitInputs[0]) digitInputs[0].focus();
+          })
+          .catch(function () {
+            showStatus(
+              statusEl,
+              "Network error. If the site is static-only, set window.PORTFOLIO_API to your API URL.",
+              "error"
+            );
+            sendBtn.disabled = false;
+          });
       });
     }
 
-    // Check expiry
-    if (Date.now() > savedOtp.expiresAt) {
-      delete otpStore[email];
+    if (verifyBtn) {
+      verifyBtn.addEventListener("click", function () {
+        var email = (emailInput && emailInput.value) || "";
+        email = email.trim().toLowerCase();
+        var otp = digitsValue(digitInputs);
+        if (!emailRe.test(email)) {
+          showStatus(statusEl, "Enter a valid email address.", "error");
+          return;
+        }
+        if (!/^\d{6}$/.test(otp)) {
+          showStatus(statusEl, "Enter the 6-digit code from your email.", "error");
+          return;
+        }
 
-      return res.status(400).json({
-        ok: false,
-        code: "OTP_EXPIRED",
-        error: "OTP expired",
+        verifyBtn.disabled = true;
+        fetch(apiUrl("/api/verify-otp"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, otp: otp }),
+        })
+          .then(function (res) {
+            return readJson(res).then(function (data) {
+              return { res: res, data: data };
+            });
+          })
+          .then(function (_ref2) {
+            var res = _ref2.res;
+            var data = _ref2.data;
+            if (!res.ok) {
+              if (data.code === "OTP_EXPIRED") {
+                showStatus(
+                  statusEl,
+                  "That code expired. Request a new code.",
+                  "error"
+                );
+              } else {
+                showStatus(
+                  statusEl,
+                  data.error || "Verification failed.",
+                  "error"
+                );
+              }
+              verifyBtn.disabled = false;
+              return;
+            }
+            verificationToken = data.verificationToken || null;
+            if (!verificationToken) {
+              showStatus(statusEl, "Server did not return a token.", "error");
+              verifyBtn.disabled = false;
+              return;
+            }
+            showStatus(statusEl, data.message || "Email verified.", "success");
+            onVerified();
+          })
+          .catch(function () {
+            showStatus(statusEl, "Network error. Try again.", "error");
+            verifyBtn.disabled = false;
+          });
       });
     }
 
-    // Verify OTP
-    if (savedOtp.otp !== otp) {
-      return res.status(400).json({
-        ok: false,
-        error: "Invalid OTP",
+    digitInputs.forEach(function (input, index) {
+      input.addEventListener("input", function () {
+        var v = (input.value || "").replace(/\D/g, "").slice(0, 1);
+        input.value = v;
+        if (v && index < digitInputs.length - 1) digitInputs[index + 1].focus();
       });
-    }
-
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString("hex");
-
-    verifiedUsers[email] = {
-      token: verificationToken,
-      verifiedAt: Date.now(),
-    };
-
-    // Delete OTP after success
-    delete otpStore[email];
-
-    return res.json({
-      ok: true,
-      message: "Email verified successfully",
-      verificationToken,
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Backspace" && !input.value && index > 0) {
+          digitInputs[index - 1].focus();
+        }
+      });
     });
-  } catch (error) {
-    console.log(error);
 
-    return res.status(500).json({
-      ok: false,
-      error: "Verification failed",
+    if (changeEmailBtn) {
+      changeEmailBtn.addEventListener("click", function () {
+        resetOtpUi();
+        if (sendBtn) sendBtn.textContent = "Verify email";
+        showStatus(statusEl, "", null);
+        if (emailInput) emailInput.focus();
+      });
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!verificationToken) {
+        showStatus(statusEl, "Verify your email before sending.", "error");
+        return;
+      }
+
+      var fd = new FormData(form);
+      var name = (fd.get("name") || "").toString().trim();
+      var email = (fd.get("email") || "").toString().trim().toLowerCase();
+      var message = (fd.get("message") || "").toString().trim();
+
+      if (!name || !email || !message) {
+        showStatus(statusEl, "Please fill in all fields.", "error");
+        return;
+      }
+
+      if (submitBtn) submitBtn.disabled = true;
+      showStatus(statusEl, "Sending…", null);
+
+      fetch(apiUrl("/api/contact"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name,
+          email: email,
+          message: message,
+          verificationToken: verificationToken,
+        }),
+      })
+        .then(function (res) {
+          return readJson(res).then(function (data) {
+            return { res: res, data: data };
+          });
+        })
+        .then(function (_ref3) {
+          var res = _ref3.res;
+          var data = _ref3.data;
+          if (!res.ok) {
+            showStatus(
+              statusEl,
+              data.error || "Could not send your message.",
+              "error"
+            );
+            if (submitBtn) submitBtn.disabled = false;
+            return;
+          }
+          showStatus(
+            statusEl,
+            data.message || "Thanks — your message was sent.",
+            "success"
+          );
+          form.reset();
+          resetOtpUi();
+          if (sendBtn) sendBtn.textContent = "Verify email";
+        })
+        .catch(function () {
+          showStatus(statusEl, "Network error. Try again.", "error");
+          if (submitBtn) submitBtn.disabled = false;
+        });
     });
   }
-});
 
-// ===============================
-// CONTACT FORM API
-// ===============================
-
-app.post("/api/contact", async (req, res) => {
-  try {
-    const {
-      name,
-      email,
-      message,
-      verificationToken,
-    } = req.body;
-
-    // Validation
-    if (!name || !email || !message) {
-      return res.status(400).json({
-        ok: false,
-        error: "All fields are required",
-      });
-    }
-
-    // Check verification
-    const verifiedUser = verifiedUsers[email];
-
-    if (
-      !verifiedUser ||
-      verifiedUser.token !== verificationToken
-    ) {
-      return res.status(401).json({
-        ok: false,
-        error: "Email not verified",
-      });
-    }
-
-    // Send email to YOU
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to: process.env.MAIL_TO,
-      subject: `Portfolio Contact from ${name}`,
-      html: `
-        <div style="font-family:sans-serif;padding:20px;">
-          <h2>New Portfolio Contact</h2>
-
-          <p><strong>Name:</strong> ${name}</p>
-
-          <p><strong>Email:</strong> ${email}</p>
-
-          <p><strong>Message:</strong></p>
-
-          <div style="
-            background:#f3f4f6;
-            padding:15px;
-            border-radius:10px;
-          ">
-            ${message}
-          </div>
-        </div>
-      `,
-    });
-
-    // Auto reply to client
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to: email,
-      subject: "Message Received",
-      html: `
-        <div style="font-family:sans-serif;padding:20px;">
-          <h2>Thanks for contacting me</h2>
-
-          <p>
-            I received your message and
-            will get back to you soon.
-          </p>
-
-          <br />
-
-          <p>— Aryan Lavate</p>
-        </div>
-      `,
-    });
-
-    return res.json({
-      ok: true,
-      message: "Message sent successfully",
-    });
-  } catch (error) {
-    console.log(error);
-
-    return res.status(500).json({
-      ok: false,
-      error: "Failed to send message",
-    });
-  }
-});
-
-// ===============================
-// HEALTH CHECK
-// ===============================
-
-app.get("/", (req, res) => {
-  res.send("Portfolio API Running");
-});
-
-// ===============================
-// START SERVER
-// ===============================
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  document.querySelectorAll("[data-contact-otp-form]").forEach(initForm);
+})();
