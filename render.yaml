@@ -1,0 +1,15 @@
+# Render Blueprint: API (Node). Set secrets in the Render dashboard (SMTP, VERIFICATION_SECRET, CORS_ORIGIN).
+# https://render.com/docs/blueprint-specification
+services:
+  - type: web
+    name: portfolio-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: TRUST_PROXY
+        value: "1"
