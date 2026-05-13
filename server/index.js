@@ -21,17 +21,54 @@ if (process.env.TRUST_PROXY === "1" || process.env.RENDER === "true") {
 }
 
 /** Vercel / other static hosts call the API on Render — browsers require CORS. */
-function getCorsOriginOption() {
-  const list = (process.env.CORS_ORIGIN || "")
+function isBuiltInAllowedOrigin(origin) {
+  if (!origin || typeof origin !== "string") return false;
+  let url;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  const { protocol, hostname } = url;
+  const isLocal =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]";
+  if (isLocal) return protocol === "http:" || protocol === "https:";
+  if (protocol !== "https:") return false;
+  return (
+    hostname.endsWith(".vercel.app") ||
+    hostname.endsWith(".onrender.com") ||
+    hostname === "vercel.app" ||
+    hostname === "onrender.com"
+  );
+}
+
+function getExtraCorsOrigins() {
+  return (process.env.CORS_ORIGIN || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return list.length ? list : true;
 }
 
 app.use(
   cors({
-    origin: getCorsOriginOption(),
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (isBuiltInAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      const extras = getExtraCorsOrigins();
+      if (extras.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     methods: ["GET", "HEAD", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
     maxAge: 86_400,
