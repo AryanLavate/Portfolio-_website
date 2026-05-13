@@ -1,4 +1,6 @@
 ﻿import crypto from "node:crypto";
+import cors from "cors";
+import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
@@ -6,6 +8,14 @@ import dotenv from "dotenv";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import nodemailer from "nodemailer";
+
+const app = express();
+
+app.use(cors({
+  origin: "https://portfolio-website-ktv0xdjlb-aryanlavates-projects.vercel.app",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
