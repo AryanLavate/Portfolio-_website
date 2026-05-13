@@ -6,14 +6,20 @@ export const API_BASE_PRODUCTION =
  * API origin for fetch calls.
  * - Dev (`vite`): empty string → same origin as Vite, `/api/*` proxied to local server.
  * - Prod on same Render host: empty string → `/api/*` on current origin.
+ * - Page opened on localhost/127.0.0.1 (e.g. `vite preview`): local API above.
  * - Prod elsewhere (e.g. Vercel): Render URL above unless `VITE_API_BASE_URL` is set.
  */
+const LOCAL_DEV_API_BASE = "http://localhost:3000";
+
 export function getApiBase() {
   const fromEnv = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   if (import.meta.env.DEV) return "";
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return LOCAL_DEV_API_BASE;
+    }
     if (host.endsWith(".onrender.com")) return "";
   }
   return API_BASE_PRODUCTION;

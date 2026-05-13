@@ -3,9 +3,10 @@
  *
  * API base resolution (first match wins):
  * 1. window.PORTFOLIO_API — manual override (staging, forked backend, etc.)
- * 2. localhost / 127.0.0.1 page host → http://localhost:3000 (local API)
- * 3. Page on *.onrender.com (same app serves API) → same origin (empty base)
- * 4. Otherwise → production Render API below (e.g. Vercel → Render)
+ * 2. file:// page → http://localhost:3000 (open HTML from disk; run API locally)
+ * 3. localhost / 127.0.0.1 page host → http://localhost:3000 (local API)
+ * 4. Page on *.onrender.com (same app serves API) → same origin (empty base)
+ * 5. Otherwise → production Render API below (e.g. Vercel → Render)
  */
 (function () {
   "use strict";
@@ -21,6 +22,9 @@
       return override.trim().replace(/\/$/, "");
     }
     try {
+      if (window.location.protocol === "file:") {
+        return LOCAL_DEV_API_BASE;
+      }
       var host = window.location.hostname;
       if (host === "localhost" || host === "127.0.0.1") {
         return LOCAL_DEV_API_BASE;
