@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact | Aryan</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<body class="page-contact">
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+        <a href="./index.html" class="logo-wrap">
+            <img src="./assets/Logo.png" alt="Home" class="logo" width="72" height="72">
+        </a>
+        <div class="nav-shell">
+            <nav class="nav" id="primary-nav" aria-label="Primary">
+                <a href="./index.html" class="nav__link">Home</a>
+                <a href="./about.html" class="nav__link">About</a>
+                <a href="./projects.html" class="nav__link">Projects</a>
+                <a href="./contact.html" class="nav__link nav__link--active">Contact</a>
+            </nav>
+        </div>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-controls="primary-nav" aria-expanded="false" aria-label="Open menu">
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+        </button>
+    </header>
+    <div class="nav-backdrop" id="nav-backdrop" aria-hidden="true"></div>
+
+    <main class="page-inner">
+        <section class="panel panel--contact">
+            <h1 class="page-title">Contact</h1>
+            <p class="page-lead">Tell me about your project — I’ll get back to you.</p>
+            <form class="contact-form" data-contact-otp-form novalidate>
+                <label class="field">
+                    <span class="field__label">Name</span>
+                    <input type="text" name="name" class="field__input" required autocomplete="name" placeholder="Your name">
+                </label>
+                <label class="field">
+                    <span class="field__label">Email</span>
+                    <input type="email" name="email" class="field__input" required autocomplete="email" placeholder="you@email.com" inputmode="email" data-otp-email>
+                </label>
+                <div class="contact-otp-send-row field--full">
+                    <button type="button" class="btn btn--solid" data-send-otp>Verify email</button>
+                    <span class="contact-note" data-resend-note aria-live="polite"></span>
+                </div>
+                <div class="field--full contact-otp-block" data-otp-wrap hidden>
+                    <span class="field__label">Verification code</span>
+                    <div class="contact-otp-digits" role="group" aria-label="One-time passcode digits">
+                        <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 1">
+                        <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 2">
+                        <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 3">
+                        <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 4">
+                        <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 5">
+                        <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 6">
+                    </div>
+                    <button type="button" class="btn btn--ghost contact-otp-verify-btn" data-verify-otp>Verify email</button>
+                </div>
+                <div class="field--full contact-verified-banner" data-verified-box hidden>
+                    <p class="form-status form-status--success">✓ Email verified — you can send your message.</p>
+                    <button type="button" class="contact-otp-change-email" data-change-email hidden>Change email</button>
+                </div>
+                <label class="field field--full">
+                    <span class="field__label">Message</span>
+                    <textarea name="message" class="field__input field__input--area" rows="5" required placeholder="What are we building?"></textarea>
+                </label>
+                <div class="form-status" data-form-status hidden></div>
+                <button type="submit" class="btn btn--solid btn--wide" data-submit-contact disabled>Send message</button>
+            </form>
+         </section>
+    </main>
+    <script src="./js/nav.js" defer></script>
+    <script src="./js/contact-otp-form.js" defer></script>
+</body>
+
+</html>

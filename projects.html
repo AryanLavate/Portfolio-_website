@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects | Aryan</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+        <a href="./index.html" class="logo-wrap">
+            <img src="./assets/Logo.png" alt="Home" class="logo" width="72" height="72">
+        </a>
+        <div class="nav-shell">
+            <nav class="nav" id="primary-nav" aria-label="Primary">
+                <a href="./index.html" class="nav__link">Home</a>
+                <a href="./about.html" class="nav__link">About</a>
+                <a href="./projects.html" class="nav__link nav__link--active">Projects</a>
+                <a href="./contact.html" class="nav__link">Contact</a>
+            </nav>
+        </div>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-controls="primary-nav" aria-expanded="false"
+            aria-label="Open menu">
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+        </button>
+    </header>
+    <div class="nav-backdrop" id="nav-backdrop" aria-hidden="true"></div>
+
+    <main class="page-inner">
+        <section class="panel">
+            <h1 class="page-title">Projects</h1>
+            <p class="page-lead">Selected work — replace with your real case studies and links.</p>
+            <div class="project-grid">
+                <article class="project-card">
+                    <div class="project-card__tag">Web</div>
+                    <h2 class="project-card__title">Portfolio site</h2>
+                    <img src="./assets/public/Portfolio.png" alt="Portfolio site screenshot"
+                        class="project-card__image">
+                    <p class="project-card__desc">Responsive layout, semantic HTML.</p>
+                    <a href="./index.html" class="project-card__link">View</a>
+                </article>
+                <article class="project-card">
+                    <div class="project-card__tag">Webapp</div>
+                    <h2 class="project-card__title">Finzo</h2>
+                    <img src="./assets/public/Finzo.png" alt="Finzo screenshot" class="project-card__image">
+                    <p class="project-card__desc">Python-based financial management application, tailwindCSS, ReactJs
+                    </p>
+                    <a href="https://finzo-smart-expense-tracker.vercel.app/" class="project-card__link">View</a>
+                </article>
+
+                <article class="project-card">
+                    <div class="project-card__tag">Webapp</div>
+                    <h2 class="project-card__title">Healing Haven</h2>
+                    <img src="./assets/public/healing haven.png" alt="Healing Haven screenshot"
+                        class="project-card__image">
+                    <p class="project-card__desc">Python-based health support application, Bootstrap, JavaScript.</p>
+                </article>
+
+                <article class="project-card">
+                    <div class="project-card__tag">Webapp</div>
+                    <h2 class="project-card__title">Blood Bank Portal</h2>
+                    <img src="./assets/public/blood bank portal.png" alt="Blood Bank Portal screenshot"
+                        class="project-card__image">
+                    <p class="project-card__desc">Python-based blood bank management application, Bootstrap, JavaScript.</p>
+                </article>
+
+            </div>
+        </section>
+    </main>
+    <script src="./js/nav.js"></script>
+</body>
+
+</html>

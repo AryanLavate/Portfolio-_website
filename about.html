@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About | Aryan</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+        <a href="./index.html" class="logo-wrap">
+            <img src="./assets/Logo.png" alt="Home" class="logo" width="72" height="72">
+        </a>
+        <div class="nav-shell">
+            <nav class="nav" id="primary-nav" aria-label="Primary">
+                <a href="./index.html" class="nav__link">Home</a>
+                <a href="./about.html" class="nav__link nav__link--active">About</a>
+                <a href="./projects.html" class="nav__link">Projects</a>
+                <a href="./contact.html" class="nav__link">Contact</a>
+            </nav>
+        </div>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-controls="primary-nav" aria-expanded="false" aria-label="Open menu">
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+        </button>
+    </header>
+    <div class="nav-backdrop" id="nav-backdrop" aria-hidden="true"></div>
+
+    <main class="page-inner">
+        <section class="panel">
+            <h1 class="page-title">About</h1>
+            <p class="page-lead">Fullstack developer focused on sharp UI, solid architecture, and shipping fast.</p>
+            <div class="about-grid">
+                <div class="about-card">
+                    <h2 class="about-card__title">Stack</h2>
+                    <p>HTML, CSS, JavaScript, and frameworks you need — structured for scale and easy handoff.</p>
+                </div>
+                <div class="about-card">
+                    <h2 class="about-card__title">Approach</h2>
+                    <p>Clear communication, iterative delivery, and code that your future self will thank you for.</p>
+                </div>
+                
+                <div class="about-card">
+                    <h2 class="about-card__title">Focus</h2>
+                    <p>Responsive layouts, performance, and interfaces that feel as good as they look.</p>
+                </div>
+                <a href="https://github.com/AryanLavate">GitHub</a>
+            </div>
+        </section>
+
+    </main>
+    
+    <script src="./js/nav.js"></script>
+</body>
+
+</html>

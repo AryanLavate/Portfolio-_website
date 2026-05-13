@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Fullstack web developer — modern, responsive websites.">
+    <title>Aryan | Fullstack Web Developer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+
+<body>
+    <div class="noise" aria-hidden="true"></div>
+
+    <header class="site-header">
+        <a href="./index.html" class="logo-wrap">
+            <img src="./assets/Logo.png" alt="Home" class="logo" width="72" height="72">
+        </a>
+        <div class="nav-shell">
+            <nav class="nav" id="primary-nav" aria-label="Primary">
+                <a href="./index.html" class="nav__link nav__link--active">Home</a>
+                <a href="./about.html" class="nav__link">About</a>
+                <a href="./projects.html" class="nav__link">Projects</a>
+                <a href="./contact.html" class="nav__link">Contact</a>
+            </nav>
+        </div>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-controls="primary-nav" aria-expanded="false"
+            aria-label="Open menu">
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+            <span class="nav-toggle__bar" aria-hidden="true"></span>
+        </button>
+    </header>
+    <div class="nav-backdrop" id="nav-backdrop" aria-hidden="true"></div>
+
+
+    <main>
+        <section class="hero-cinematic" id="hero-cinematic" aria-labelledby="hero-intro-title">
+            <div class="hero-cinematic__pin" id="hero-pin">
+                <div class="hero-cinematic__bg" aria-hidden="true">
+                    <div class="hero-cinematic__bg-blur"></div>
+                    <div class="hero-cinematic__bg-veil"></div>
+                </div>
+                
+                <div class="hero-cinematic__mega" aria-hidden="true">
+                    <span class="hero-cinematic__letter">P</span>
+                    <span class="hero-cinematic__letter">O</span>
+                    <span class="hero-cinematic__letter">R</span>
+                    <span class="hero-cinematic__letter">T</span>
+                    <span class="hero-cinematic__letter">F</span>
+                    <span class="hero-cinematic__letter">O</span>
+                    <span class="hero-cinematic__letter">L</span>
+                    <span class="hero-cinematic__letter">I</span>
+                    <span class="hero-cinematic__letter">O</span>
+                </div>
+                <div class="hero-cinematic__portrait">
+                    <div class="hero-cinematic__glow" aria-hidden="true"></div>
+                    <div class="hero-cinematic__frame">
+                        <img src="./assets/Aryan Lavate.png" alt="Aryan — portrait" class="hero-cinematic__img"
+                            width="420" height="560" loading="eager" decoding="async" fetchpriority="high">
+                    </div>
+                </div>
+                <div class="hero-cinematic__foot">
+                    <span class="hero-cinematic__foot-item">aryan.dev</span>
+                    <span class="hero-cinematic__foot-item">Fullstack</span>
+                    <a class="hero-cinematic__foot-link" href="#contact">Contact</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="intro-split" aria-labelledby="hero-intro-title">
+            <div class="intro-split__copy">
+                <h1 id="hero-intro-title" class="intro-split__title">
+                    <span class="intro-split__title-line">Hello, I’m</span>
+                    <span class="intro-split__title-line intro-split__title-line--accent">Aryan</span>
+                </h1>
+                <p class="intro-split__lead">Fullstack web developer — I craft fast, accessible interfaces and solid
+                    backends. Minimal aesthetics, maximum clarity.</p>
+                <ul class="hero__list hero__list--intro">
+                    <li><span class="hero__check" aria-hidden="true">✓</span> 3+ projects shipped</li>
+                    <li><span class="hero__check" aria-hidden="true">✓</span> Clean, maintainable code</li>
+                    <li><span class="hero__check" aria-hidden="true">✓</span> Fast delivery</li>
+                </ul>
+                <div class="hero__actions">
+                    <a href="./projects.html" class="btn btn--solid">View my work</a>
+                    <a href="#contact" class="btn btn--ghost">Contact me</a>
+                </div>
+            </div>
+            <div class="intro-split__visual">
+                <div class="intro-split__orb" aria-hidden="true"></div>
+                <div class="intro-split__frame">
+                    <img src="./assets/Aryan01.png" alt="" class="intro-split__img" width="360" height="480"
+                        decoding="async" loading="lazy">
+                </div>
+            </div>
+        </section>
+
+        <footer class="stats-bar">
+            <span>3+ projects</span>
+            <span class="stats-bar__sep" aria-hidden="true"></span>
+            <span>Trustworthy</span>
+            <span class="stats-bar__sep" aria-hidden="true"></span>
+            <span>Modern design</span>
+        </footer>
+
+        <section class="page-inner page-inner--contact-home" id="contact" aria-labelledby="contact-title">
+            <div class="panel panel--contact panel--contact--full">
+                <h2 id="contact-title" class="page-title">Contact</h2>
+                <p class="page-lead">Tell me about your project — I’ll get back to you.</p>
+                <form class="contact-form" data-contact-otp-form novalidate>
+                    <label class="field">
+                        <span class="field__label">Name</span>
+                        <input type="text" name="name" class="field__input" required autocomplete="name"
+                            placeholder="Your name">
+                    </label>
+                    <label class="field">
+                        <span class="field__label">Email</span>
+                        <input type="email" name="email" class="field__input" required autocomplete="email"
+                            placeholder="you@email.com" inputmode="email" data-otp-email>
+                    </label>
+                    <div class="contact-otp-send-row field--full">
+                        <button type="button" class="btn btn--solid" data-send-otp>Verify email</button>
+                        <span class="contact-note" data-resend-note aria-live="polite"></span>
+                    </div>
+                    <div class="field--full contact-otp-block" data-otp-wrap hidden>
+                        <span class="field__label">Verification code</span>
+                        <div class="contact-otp-digits" role="group" aria-label="One-time passcode digits">
+                            <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 1">
+                            <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 2">
+                            <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 3">
+                            <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 4">
+                            <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 5">
+                            <input class="field__input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-otp-digit aria-label="Digit 6">
+                        </div>
+                        <button type="button" class="btn btn--ghost contact-otp-verify-btn" data-verify-otp>Verify email</button>
+                    </div>
+                    <div class="field--full contact-verified-banner" data-verified-box hidden>
+                        <p class="form-status form-status--success">✓ Email verified — you can send your message.</p>
+                        <button type="button" class="contact-otp-change-email" data-change-email hidden>Change email</button>
+                    </div>
+                    <label class="field field--full">
+                        <span class="field__label">Message</span>
+                        <textarea name="message" class="field__input field__input--area" rows="5" required
+                            placeholder="What are we building?"></textarea>
+                    </label>
+                    <div class="form-status" data-form-status hidden></div>
+                    <button type="submit" class="btn btn--solid btn--wide" data-submit-contact disabled>Send message</button>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js" defer></script>
+    <script src="./js/nav.js" defer></script>
+    <script src="./js/hero.js" defer></script>
+    <script src="./js/contact-otp-form.js" defer></script>
+</body>
+
+</html>
