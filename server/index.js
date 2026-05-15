@@ -315,7 +315,9 @@ async function handleSendOtp(req, res) {
 
     const { from } = getMailEnv();
     if (!isMailConfigured()) {
-      console.error(`${logPrefix} SMTP or MAIL_FROM not configured`);
+      console.error(
+        `${logPrefix} EMAIL_USER, EMAIL_PASS, or MAIL_FROM not configured`
+      );
       return res.status(503).json({
         ok: false,
         error: "Email is not configured on the server. Try again later.",

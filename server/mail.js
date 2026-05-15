@@ -3,7 +3,11 @@ import nodemailer from "nodemailer";
 
 const LOG = "[mail]";
 
-/** Prefer IPv4 — Render often has broken or unrouted IPv6 to Gmail. */
+const SMTP_HOST = "smtp.gmail.com";
+const SMTP_PORT = 465;
+const SMTP_TIMEOUT_MS = 10_000;
+
+/** DNS-level IPv4 — complements `family: 4` on the socket (fixes Render IPv6 egress). */
 function ipv4Lookup(hostname, options, callback) {
   dns.lookup(hostname, { ...options, family: 4 }, callback);
 }
@@ -21,10 +25,20 @@ export function maskEmail(email) {
   return `${e.slice(0, 2)}***${e.slice(at)}`;
 }
 
+/**
+ * EMAIL_USER / EMAIL_PASS are primary (Render).
+ * SMTP_USER / SMTP_PASS kept for backward compatibility.
+ */
 export function getMailEnv() {
-  const user = String(process.env.SMTP_USER || "").trim();
-  const pass = normalizeAppPassword(process.env.SMTP_PASS);
-  const from = String(process.env.MAIL_FROM || user).trim();
+  const user = String(
+    process.env.EMAIL_USER || process.env.SMTP_USER || ""
+  ).trim();
+  const pass = normalizeAppPassword(
+    process.env.EMAIL_PASS || process.env.SMTP_PASS
+  );
+  const from = String(
+    process.env.MAIL_FROM || process.env.EMAIL_USER || user
+  ).trim();
   return { user, pass, from };
 }
 
@@ -36,39 +50,40 @@ export function isMailConfigured() {
 let transporterInstance = null;
 
 /**
- * Gmail SMTP over SSL (465). Forces IPv4 via `family: 4` and custom `lookup`.
+ * Explicit Gmail SMTP (no `service: "gmail"`). IPv4-only for Render.
  */
 export function getTransporter() {
   if (transporterInstance) return transporterInstance;
 
   const { user, pass } = getMailEnv();
   if (!user || !pass) {
-    console.warn(`${LOG} SMTP_USER or SMTP_PASS missing — transporter not created.`);
+    console.warn(
+      `${LOG} EMAIL_USER/EMAIL_PASS (or SMTP_USER/SMTP_PASS) missing — transporter not created.`
+    );
     return null;
   }
 
-  const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
-  const port = Number(process.env.SMTP_PORT) || 465;
-  const secure = process.env.SMTP_SECURE !== "false";
-
   transporterInstance = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: true,
     family: 4,
     lookup: ipv4Lookup,
-    connectionTimeout: 25_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 25_000,
+    auth: {
+      user,
+      pass,
+    },
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
     tls: {
       minVersion: "TLSv1.2",
-      servername: host,
+      servername: SMTP_HOST,
     },
   });
 
   console.info(
-    `${LOG} Transporter created: host=${host} port=${port} secure=${secure} family=4 user=${user}`
+    `${LOG} Transporter ready: ${SMTP_HOST}:${SMTP_PORT} secure=true family=4 timeouts=${SMTP_TIMEOUT_MS}ms user=${user}`
   );
 
   return transporterInstance;
@@ -92,18 +107,17 @@ export function logSmtpError(context, err) {
   }
 }
 
-/** Call once at startup on Render to surface SMTP misconfiguration early. */
 export async function verifyTransporterOnStartup() {
   const transporter = getTransporter();
   if (!transporter) {
-    console.error(`${LOG} Startup verify skipped — SMTP not configured.`);
+    console.error(`${LOG} Startup verify skipped — email env not configured.`);
     return false;
   }
 
   try {
-    console.info(`${LOG} Verifying SMTP connection (IPv4)...`);
+    console.info(`${LOG} Verifying Gmail SMTP over IPv4...`);
     await transporter.verify();
-    console.info(`${LOG} SMTP connection verified.`);
+    console.info(`${LOG} SMTP verify OK.`);
     return true;
   } catch (err) {
     logSmtpError("Startup verify", err);
