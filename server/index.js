@@ -5,7 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-import nodemailer from "nodemailer";
+import {
+  getMailEnv,
+  getTransporter,
+  isMailConfigured,
+  logSmtpError,
+  maskEmail,
+  verifyTransporterOnStartup,
+} from "./mail.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.join(__dirname, "..");
@@ -172,53 +179,6 @@ function verifyContactToken(token) {
   return { email: normalizeEmail(data.email) };
 }
 
-function getTransporter() {
-  const user = String(process.env.SMTP_USER || "").trim();
-  /** Gmail app passwords are 16 chars; Google often shows them with spaces — strip them. */
-  const pass = String(process.env.SMTP_PASS || "")
-    .replace(/\s+/g, "")
-    .trim();
-  if (!user || !pass) return null;
-
-  const host = process.env.SMTP_HOST || "smtp.gmail.com";
-  const portEnv = process.env.SMTP_PORT;
-  const portNum = portEnv ? Number(portEnv) : NaN;
-  const useSsl =
-    process.env.SMTP_SECURE === "true" ||
-    process.env.SMTP_SECURE === "1" ||
-    portNum === 465;
-
-  const auth = { user, pass };
-
-  const timeouts = {
-    connectionTimeout: 25_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 25_000,
-  };
-
-  if (useSsl) {
-    return nodemailer.createTransport({
-      host,
-      port: 465,
-      secure: true,
-      auth,
-      ...timeouts,
-    });
-  }
-
-  const port =
-    Number.isFinite(portNum) && portNum > 0 ? portNum : 587;
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: false,
-    requireTLS: port === 587,
-    auth,
-    ...timeouts,
-  });
-}
-
 const sendOtpIpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: Number(process.env.RATE_LIMIT_SEND_OTP_IP_PER_HOUR) || 20,
@@ -326,63 +286,81 @@ function buildOtpEmailHtml(otp) {
 }
 
 async function handleSendOtp(req, res) {
-  const raw = req.body?.email;
-  const email = normalizeEmail(raw);
-
-  if (!email || !emailRe.test(email)) {
-    return res.status(400).json({
-      ok: false,
-      error: "Please enter a valid email address.",
-    });
-  }
-
-  const budget = peekEmailSendBudget(email);
-  if (!budget.ok) {
-    return res.status(429).json({
-      ok: false,
-      error: "Too many OTP emails for this address. Try again later.",
-      retryAfterSec: budget.retryAfterSec,
-    });
-  }
-
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
-  const transporter = getTransporter();
-  if (!from || !transporter) {
-    console.error("[send-otp] Missing SMTP or MAIL_FROM configuration.");
-    return res.status(503).json({
-      ok: false,
-      error: "Email is not configured on the server. Try again later.",
-    });
-  }
-
-  const now = Date.now();
-  const existing = otpByEmail.get(email);
-  if (
-    existing &&
-    !existing.consumed &&
-    now <= existing.expiresAt &&
-    now - existing.lastSentAt < RESEND_COOLDOWN_MS
-  ) {
-    const waitMs = RESEND_COOLDOWN_MS - (now - existing.lastSentAt);
-    return res.status(429).json({
-      ok: false,
-      error: "Please wait before requesting another code.",
-      retryAfterSec: Math.ceil(waitMs / 1000),
-    });
-  }
-
-  const otp = String(crypto.randomInt(100000, 1000000));
-  const otpHash = hashOtp(email, otp);
-  const expiresAt = now + OTP_TTL_MS;
-
-  otpByEmail.set(email, {
-    otpHash,
-    expiresAt,
-    consumed: false,
-    lastSentAt: now,
-  });
+  const requestId = crypto.randomBytes(4).toString("hex");
+  const logPrefix = `[send-otp:${requestId}]`;
 
   try {
+    const raw = req.body?.email;
+    const email = normalizeEmail(raw);
+
+    console.info(`${logPrefix} Request received for ${maskEmail(email)}`);
+
+    if (!email || !emailRe.test(email)) {
+      console.warn(`${logPrefix} Invalid email`);
+      return res.status(400).json({
+        ok: false,
+        error: "Please enter a valid email address.",
+      });
+    }
+
+    const budget = peekEmailSendBudget(email);
+    if (!budget.ok) {
+      console.warn(`${logPrefix} Per-email rate limit`);
+      return res.status(429).json({
+        ok: false,
+        error: "Too many OTP emails for this address. Try again later.",
+        retryAfterSec: budget.retryAfterSec,
+      });
+    }
+
+    const { from } = getMailEnv();
+    if (!isMailConfigured()) {
+      console.error(`${logPrefix} SMTP or MAIL_FROM not configured`);
+      return res.status(503).json({
+        ok: false,
+        error: "Email is not configured on the server. Try again later.",
+      });
+    }
+
+    const transporter = getTransporter();
+    if (!transporter) {
+      console.error(`${logPrefix} Transporter unavailable`);
+      return res.status(503).json({
+        ok: false,
+        error: "Email is not configured on the server. Try again later.",
+      });
+    }
+
+    const now = Date.now();
+    const existing = otpByEmail.get(email);
+    if (
+      existing &&
+      !existing.consumed &&
+      now <= existing.expiresAt &&
+      now - existing.lastSentAt < RESEND_COOLDOWN_MS
+    ) {
+      const waitMs = RESEND_COOLDOWN_MS - (now - existing.lastSentAt);
+      console.info(`${logPrefix} Resend cooldown active`);
+      return res.status(429).json({
+        ok: false,
+        error: "Please wait before requesting another code.",
+        retryAfterSec: Math.ceil(waitMs / 1000),
+      });
+    }
+
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = hashOtp(email, otp);
+    const expiresAt = now + OTP_TTL_MS;
+
+    otpByEmail.set(email, {
+      otpHash,
+      expiresAt,
+      consumed: false,
+      lastSentAt: now,
+    });
+
+    console.info(`${logPrefix} Sending OTP email via SMTP (IPv4)...`);
+
     await transporter.sendMail({
       from: `"Portfolio" <${from}>`,
       to: email,
@@ -390,27 +368,43 @@ async function handleSendOtp(req, res) {
       text: `Your verification OTP is: ${otp}\n\nThis code expires in 5 minutes.`,
       html: buildOtpEmailHtml(otp),
     });
-  } catch (err) {
-    console.error(
-      "[send-otp] sendMail failed:",
-      err?.message,
-      err?.code,
-      err?.responseCode
-    );
-    otpByEmail.delete(email);
-    return res.status(500).json({
-      ok: false,
-      error: "Could not send the email. Check SMTP settings and try again.",
+
+    incrementEmailSendBudget(email);
+
+    console.info(`${logPrefix} OTP sent successfully to ${maskEmail(email)}`);
+
+    return res.json({
+      ok: true,
+      message: "OTP sent. Check your inbox.",
+      resendAfterSec: Math.ceil(RESEND_COOLDOWN_MS / 1000),
     });
+  } catch (err) {
+    logSmtpError(`${logPrefix} sendMail`, err);
+
+    const email = normalizeEmail(req.body?.email);
+    if (email) otpByEmail.delete(email);
+
+    const isTimeout =
+      err?.code === "ETIMEDOUT" ||
+      err?.code === "ESOCKET" ||
+      err?.code === "ENETUNREACH";
+    const isAuth =
+      err?.code === "EAUTH" || err?.responseCode === 535;
+
+    let status = 500;
+    let error = "Could not send the email. Please try again later.";
+
+    if (isAuth) {
+      status = 503;
+      error =
+        "Email service authentication failed. Contact the site owner.";
+    } else if (isTimeout) {
+      error =
+        "Email service timed out. Please try again in a few minutes.";
+    }
+
+    return res.status(status).json({ ok: false, error });
   }
-
-  incrementEmailSendBudget(email);
-
-  return res.json({
-    ok: true,
-    message: "OTP sent. Check your inbox.",
-    resendAfterSec: Math.ceil(RESEND_COOLDOWN_MS / 1000),
-  });
 }
 
 async function handleVerifyOtp(req, res) {
@@ -510,12 +504,10 @@ async function handleContact(req, res) {
   }
 
   const to = process.env.MAIL_TO;
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
+  const { from } = getMailEnv();
 
-  if (!to || !from) {
-    console.error(
-      "[contact] Missing MAIL_TO or MAIL_FROM in environment. Set SMTP_* and MAIL_TO in server/.env"
-    );
+  if (!to || !isMailConfigured()) {
+    console.error("[contact] Missing MAIL_TO or SMTP configuration.");
     return res.status(503).json({
       ok: false,
       error: "Email is not configured on the server. Try again later.",
@@ -524,7 +516,7 @@ async function handleContact(req, res) {
 
   const transporter = getTransporter();
   if (!transporter) {
-    console.error("[contact] Missing SMTP_HOST, SMTP_USER, or SMTP_PASS.");
+    console.error("[contact] Transporter unavailable.");
     return res.status(503).json({
       ok: false,
       error: "Email is not configured on the server. Try again later.",
@@ -545,12 +537,7 @@ async function handleContact(req, res) {
       )}&gt;</p><p>${escapeHtml(messageStr).replace(/\n/g, "<br>")}</p>`,
     });
   } catch (err) {
-    console.error(
-      "[contact] sendMail failed:",
-      err?.message,
-      err?.code,
-      err?.responseCode
-    );
+    logSmtpError("[contact] sendMail", err);
     return res.status(500).json({
       ok: false,
       error: "Could not send your message. Please try again later.",
@@ -566,6 +553,12 @@ app.post("/contact", contactIpLimiter, handleContact);
 app.use("/contact-ui", express.static(contactUiDir));
 app.use(express.static(rootDir));
 
-app.listen(PORT, () => {
-  console.log(`Portfolio server at http://localhost:${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`Portfolio server listening on port ${PORT}`);
+  console.log(
+    `[boot] NODE_ENV=${process.env.NODE_ENV || "development"} RENDER=${process.env.RENDER || "false"} trust_proxy=${app.get("trust proxy")}`
+  );
+  if (process.env.SMTP_VERIFY_ON_START !== "false") {
+    await verifyTransporterOnStartup();
+  }
 });
