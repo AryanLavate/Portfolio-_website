@@ -32,7 +32,8 @@ if (!to) {
 }
 
 const from =
-  String(process.env.RESEND_FROM || "").trim() || "onboarding@resend.dev";
+  String(process.env.MAIL_FROM || process.env.RESEND_FROM || "")
+    .trim() || "onboarding@resend.dev";
 
 const resend = new Resend(apiKey);
 

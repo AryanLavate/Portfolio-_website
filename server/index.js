@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import {
+  getContactSendErrorResponse,
+  getOtpSendErrorResponse,
   isResendConfigured,
   logResendBoot,
   logResendError,
@@ -270,10 +272,13 @@ async function handleSendOtp(req, res) {
     }
 
     if (!isResendConfigured()) {
-      console.error(`${logPrefix} RESEND_API_KEY not configured`);
+      console.error(
+        `${logPrefix} RESEND_API_KEY missing or invalid (expected re_… key from Resend)`
+      );
       return res.status(503).json({
         ok: false,
-        error: "Email is not configured on the server. Try again later.",
+        error:
+          "Email is not configured on the server. Set RESEND_API_KEY on the server.",
       });
     }
 
@@ -324,28 +329,9 @@ async function handleSendOtp(req, res) {
     const email = normalizeEmail(req.body?.email);
     if (email) otpByEmail.delete(email);
 
-    const msg = String(err?.message || "").toLowerCase();
-    const isConfig = err?.code === "MISSING_API_KEY";
-    const isAuth =
-      err?.statusCode === 401 ||
-      err?.statusCode === 403 ||
-      msg.includes("api key") ||
-      [
-        "missing_api_key",
-        "invalid_api_Key",
-        "invalid_access",
-        "invalid_from_address",
-      ].includes(err?.name);
+    logResendError(`${logPrefix} Resend`, err);
 
-    let status = 500;
-    let error = "Could not send the email. Please try again later.";
-
-    if (isConfig || isAuth) {
-      status = 503;
-      error =
-        "Email service is not configured correctly. Contact the site owner.";
-    }
-
+    const { status, error } = getOtpSendErrorResponse(err);
     return res.status(status).json({ ok: false, error });
   }
 }
@@ -449,7 +435,7 @@ async function handleContact(req, res) {
   const to = process.env.MAIL_TO?.trim();
 
   if (!to || !isResendConfigured()) {
-    console.error("[contact] Missing MAIL_TO or RESEND_API_KEY.");
+    console.error("[contact] MAIL_TO or RESEND_API_KEY not configured.");
     return res.status(503).json({
       ok: false,
       error: "Email is not configured on the server. Try again later.",
@@ -469,10 +455,11 @@ async function handleContact(req, res) {
       )}&gt;</p><p>${escapeHtml(messageStr).replace(/\n/g, "<br>")}</p>`,
     });
   } catch (err) {
-    logResendError("[contact] sendContactEmail", err);
-    return res.status(500).json({
+    logResendError("[contact] Resend", err);
+    const { status, error } = getContactSendErrorResponse(err);
+    return res.status(status).json({
       ok: false,
-      error: "Could not send your message. Please try again later.",
+      error,
     });
   }
 

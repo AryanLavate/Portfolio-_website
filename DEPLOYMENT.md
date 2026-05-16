@@ -9,7 +9,7 @@ The **`client/`** + **`contact-ui/`** Vite bundle is **optional** (legacy altern
 
 ## Local development
 
-1. Copy `server/.env.example` to `server/.env` and fill in Gmail SMTP values (use a [Google App Password](https://support.google.com/accounts/answer/185833) if 2FA is on).
+1. Copy `server/.env.example` to `server/.env` and set **Resend** values: `RESEND_API_KEY`, `MAIL_FROM` (verified sender in Resend), and `MAIL_TO` for contact notifications. See [Resend](https://resend.com/docs).
 2. Install server dependencies:
 
 ```bash
@@ -54,6 +54,6 @@ Host HTML/CSS/JS on Netlify/Vercel/Cloudflare Pages, run the Express app on Rail
 
 ## Security checklist
 
-- Never commit `server/.env` or real SMTP passwords.
+- Never commit `server/.env` or API keys (`RESEND_API_KEY`).
 - Use a long random `VERIFICATION_SECRET` in production.
 - Enable `TRUST_PROXY=1` when running behind a reverse proxy so rate limits use the real client IP.

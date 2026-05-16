@@ -2,14 +2,26 @@ import { Resend } from "resend";
 
 const LOG = "[resend]";
 
-let resendClient = null;
+/** Matches quickstart: `new Resend(process.env.RESEND_API_KEY)` — one client per process. */
+let resendSingleton = null;
 
 function getResend() {
-  if (resendClient) return resendClient;
-  const key = String(process.env.RESEND_API_KEY || "").trim();
+  const key = String(process.env.RESEND_API_KEY ?? "").trim();
   if (!key) return null;
-  resendClient = new Resend(key);
-  return resendClient;
+  if (!resendSingleton) {
+    resendSingleton = new Resend(key);
+  }
+  return resendSingleton;
+}
+
+/**
+ * Render: set `MAIL_FROM` to a Resend-verified sender (or `onboarding@resend.dev` for tests).
+ * `RESEND_FROM` is accepted for backward compatibility only.
+ */
+export function getMailFrom() {
+  return String(
+    process.env.MAIL_FROM || process.env.RESEND_FROM || "onboarding@resend.dev"
+  ).trim();
 }
 
 export function maskEmail(email) {
@@ -19,28 +31,76 @@ export function maskEmail(email) {
   return `${e.slice(0, 2)}***${e.slice(at)}`;
 }
 
-export function getResendFrom() {
-  return String(
-    process.env.RESEND_FROM || "onboarding@resend.dev"
-  ).trim();
-}
-
 export function isResendConfigured() {
-  return Boolean(String(process.env.RESEND_API_KEY || "").trim());
+  const key = String(process.env.RESEND_API_KEY ?? "").trim();
+  return key.length > 0 && key.startsWith("re_");
 }
 
 export function logResendError(context, err) {
   const message = err?.message ?? String(err);
   const name = err?.name;
   const statusCode = err?.statusCode ?? err?.status;
-  console.error(`${LOG} ${context} failed:`, {
-    message,
-    name,
-    statusCode,
-  });
+  const code = err?.code;
+  console.error(`${LOG} ${context}:`, { message, name, statusCode, code });
   if (process.env.NODE_ENV !== "production" && err?.stack) {
     console.error(err.stack);
   }
+}
+
+/**
+ * Map Resend failures to HTTP + safe client message.
+ * Avoid broad `message.includes("api")` checks that mislabel transport errors as "not configured".
+ */
+export function getOtpSendErrorResponse(err) {
+  if (err?.code === "MISSING_API_KEY") {
+    return {
+      status: 503,
+      error:
+        "Email is not configured on the server. Try again later.",
+    };
+  }
+
+  const name = err?.name;
+
+  if (name === "missing_api_key" || name === "invalid_api_Key" || err?.statusCode === 401) {
+    return {
+      status: 503,
+      error:
+        "Email service authentication failed. Verify RESEND_API_KEY in server environment.",
+    };
+  }
+
+  if (name === "invalid_from_address" || name === "validation_error") {
+    return {
+      status: 503,
+      error:
+        "Could not send the email. MAIL_FROM must be a sender verified in your Resend account.",
+    };
+  }
+
+  if (name === "rate_limit_exceeded" || err?.statusCode === 429) {
+    return {
+      status: 429,
+      error: "Too many emails sent. Try again in a few minutes.",
+    };
+  }
+
+  if (name === "invalid_access") {
+    return {
+      status: 503,
+      error:
+        "Email service rejected the request. Check Resend API key permissions.",
+    };
+  }
+
+  return {
+    status: 500,
+    error: "Could not send the email. Please try again later.",
+  };
+}
+
+export function getContactSendErrorResponse(err) {
+  return getOtpSendErrorResponse(err);
 }
 
 /** @param {{ message: string; name: string }} error */
@@ -60,6 +120,9 @@ function throwFromResendError(error) {
   ) {
     e.statusCode = 403;
   }
+  if (error.name === "rate_limit_exceeded") {
+    e.statusCode = 429;
+  }
   throw e;
 }
 
@@ -71,55 +134,8 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function buildOtpEmailHtml(otp) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Verify Your Email</title>
-</head>
-<body style="margin:0;background:#0b0f14;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#e8eef7;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" style="max-width:520px;background:#121826;border-radius:16px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 20px 60px rgba(0,0,0,0.45);">
-          <tr>
-            <td style="padding:28px 28px 8px 28px;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:#7dd3fc;">Portfolio</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 8px 28px;font-size:22px;font-weight:650;line-height:1.25;">Email Verification</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 20px 28px;font-size:15px;line-height:1.6;color:#c7d2fe;">
-              Your one-time code is below. It expires in <strong>5 minutes</strong>.
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:8px 28px 28px 28px;">
-              <div style="display:inline-block;padding:18px 28px;border-radius:14px;background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid rgba(125,211,252,0.35);font-size:28px;font-weight:700;letter-spacing:0.35em;color:#f8fafc;">
-                ${escapeHtml(otp)}
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:0 28px 28px 28px;font-size:13px;line-height:1.6;color:#94a3b8;">
-              If you did not request this, you can ignore this email.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
 /**
- * Sends OTP verification email via Resend HTTP API (no SMTP).
- * @param {string} email Recipient address (normalized)
- * @param {string} otp Six-digit code
- * @returns {Promise<{ id?: string }>}
+ * Sends OTP via Resend HTTP API only (no SMTP).
  */
 export async function sendOtpEmail(email, otp) {
   const resend = getResend();
@@ -129,38 +145,35 @@ export async function sendOtpEmail(email, otp) {
     throw err;
   }
 
-  const from = getResendFrom();
+  const from = getMailFrom();
 
-  try {
-    console.info(`${LOG} Sending OTP to ${maskEmail(email)} from ${from}`);
+  console.info(`${LOG} OTP send`, {
+    to: maskEmail(email),
+    from,
+  });
 
-    const { data, error } = await resend.emails.send({
-      from: `Portfolio <${from}>`,
-      to: email,
-      subject: "Your OTP Code",
-      text: `Your verification OTP is: ${otp}\n\nThis code expires in 5 minutes.`,
-      html: buildOtpEmailHtml(otp),
-    });
+  const { data, error } = await resend.emails.send({
+    from,
+    to: email,
+    subject: "Your OTP Code",
+    text: `Your verification OTP is: ${otp}\n\nThis code expires in 5 minutes.`,
+    html: `<h1 style="font-family:system-ui;font-size:2rem;letter-spacing:0.2em;">${escapeHtml(
+      otp
+    )}</h1><p>This code expires in 5 minutes.</p>`,
+  });
 
-    if (error) {
-      throwFromResendError(error);
-    }
-
-    console.info(`${LOG} OTP email sent`, {
-      id: data?.id,
-      to: maskEmail(email),
-    });
-
-    return data ?? {};
-  } catch (err) {
-    logResendError("sendOtpEmail", err);
-    throw err;
+  if (error) {
+    throwFromResendError(error);
   }
+
+  console.info(`${LOG} OTP email accepted by Resend`, {
+    id: data?.id,
+    to: maskEmail(email),
+  });
+
+  return data ?? {};
 }
 
-/**
- * Contact form notification (replaces previous SMTP sendMail).
- */
 export async function sendContactEmail({
   to,
   replyTo,
@@ -175,38 +188,48 @@ export async function sendContactEmail({
     throw err;
   }
 
-  const from = getResendFrom();
+  const from = getMailFrom();
 
-  try {
-    const { data, error } = await resend.emails.send({
-      from: `Portfolio site <${from}>`,
-      to,
-      replyTo,
-      subject,
-      text,
-      html,
-    });
+  const { data, error } = await resend.emails.send({
+    from,
+    to,
+    replyTo,
+    subject,
+    text,
+    html,
+  });
 
-    if (error) {
-      throwFromResendError(error);
-    }
-
-    console.info(`${LOG} Contact email sent`, { id: data?.id, to });
-    return data ?? {};
-  } catch (err) {
-    logResendError("sendContactEmail", err);
-    throw err;
+  if (error) {
+    throwFromResendError(error);
   }
+
+  console.info(`${LOG} contact email accepted`, { id: data?.id, to });
+  return data ?? {};
 }
 
 export function logResendBoot() {
-  if (isResendConfigured()) {
-    console.info(
-      `${LOG} API key loaded (from=${getResendFrom()}). Resend HTTP API — no SMTP.`
-    );
-  } else {
+  const key = String(process.env.RESEND_API_KEY ?? "").trim();
+  if (!key) {
+    console.warn(`${LOG} RESEND_API_KEY is not set — OTP and contact email will fail.`);
+    return;
+  }
+
+  if (!key.startsWith("re_")) {
     console.warn(
-      `${LOG} RESEND_API_KEY missing — OTP and contact email will fail until set.`
+      `${LOG} RESEND_API_KEY should usually start with "re_" — double-check your Render secret.`
+    );
+  }
+
+  const mailTo = String(process.env.MAIL_TO ?? "").trim();
+  console.info(`${LOG} Resend email delivery`, {
+    mailFrom: getMailFrom(),
+    mailToSet: Boolean(mailTo),
+    apiKeyLooksValid: key.startsWith("re_") && key.length > 12,
+  });
+
+  if (!mailTo) {
+    console.warn(
+      `${LOG} MAIL_TO is not set — contact form notifications have no destination.`
     );
   }
 }
