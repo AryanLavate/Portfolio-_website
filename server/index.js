@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import {
-  getMailEnv,
-  getTransporter,
-  isMailConfigured,
-  logSmtpError,
+  isResendConfigured,
+  logResendBoot,
+  logResendError,
   maskEmail,
-  verifyTransporterOnStartup,
+  sendContactEmail,
+  sendOtpEmail,
 } from "./mail.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -241,50 +241,6 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function buildOtpEmailHtml(otp) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Verify Your Email</title>
-</head>
-<body style="margin:0;background:#0b0f14;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#e8eef7;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" style="max-width:520px;background:#121826;border-radius:16px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 20px 60px rgba(0,0,0,0.45);">
-          <tr>
-            <td style="padding:28px 28px 8px 28px;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:#7dd3fc;">Portfolio</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 8px 28px;font-size:22px;font-weight:650;line-height:1.25;">Verify Your Email</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 20px 28px;font-size:15px;line-height:1.6;color:#c7d2fe;">
-              Use this one-time code to confirm your address. It expires in <strong>5 minutes</strong>.
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:8px 28px 28px 28px;">
-              <div style="display:inline-block;padding:18px 28px;border-radius:14px;background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid rgba(125,211,252,0.35);font-size:28px;font-weight:700;letter-spacing:0.35em;color:#f8fafc;">
-                ${escapeHtml(otp)}
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:0 28px 28px 28px;font-size:13px;line-height:1.6;color:#94a3b8;">
-              If you did not request this, you can ignore this email.
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
 async function handleSendOtp(req, res) {
   const requestId = crypto.randomBytes(4).toString("hex");
   const logPrefix = `[send-otp:${requestId}]`;
@@ -313,20 +269,8 @@ async function handleSendOtp(req, res) {
       });
     }
 
-    const { from } = getMailEnv();
-    if (!isMailConfigured()) {
-      console.error(
-        `${logPrefix} EMAIL_USER, EMAIL_PASS, or MAIL_FROM not configured`
-      );
-      return res.status(503).json({
-        ok: false,
-        error: "Email is not configured on the server. Try again later.",
-      });
-    }
-
-    const transporter = getTransporter();
-    if (!transporter) {
-      console.error(`${logPrefix} Transporter unavailable`);
+    if (!isResendConfigured()) {
+      console.error(`${logPrefix} RESEND_API_KEY not configured`);
       return res.status(503).json({
         ok: false,
         error: "Email is not configured on the server. Try again later.",
@@ -342,7 +286,7 @@ async function handleSendOtp(req, res) {
       now - existing.lastSentAt < RESEND_COOLDOWN_MS
     ) {
       const waitMs = RESEND_COOLDOWN_MS - (now - existing.lastSentAt);
-      console.info(`${logPrefix} Resend cooldown active`);
+      console.info(`${logPrefix} OTP resend cooldown active`);
       return res.status(429).json({
         ok: false,
         error: "Please wait before requesting another code.",
@@ -361,15 +305,9 @@ async function handleSendOtp(req, res) {
       lastSentAt: now,
     });
 
-    console.info(`${logPrefix} Sending OTP email via SMTP (IPv4)...`);
+    console.info(`${logPrefix} Sending OTP via Resend API...`);
 
-    await transporter.sendMail({
-      from: `"Portfolio" <${from}>`,
-      to: email,
-      subject: "Verify Your Email",
-      text: `Your verification OTP is: ${otp}\n\nThis code expires in 5 minutes.`,
-      html: buildOtpEmailHtml(otp),
-    });
+    await sendOtpEmail(email, otp);
 
     incrementEmailSendBudget(email);
 
@@ -381,28 +319,31 @@ async function handleSendOtp(req, res) {
       resendAfterSec: Math.ceil(RESEND_COOLDOWN_MS / 1000),
     });
   } catch (err) {
-    logSmtpError(`${logPrefix} sendMail`, err);
+    console.warn(`${logPrefix} OTP delivery failed`);
 
     const email = normalizeEmail(req.body?.email);
     if (email) otpByEmail.delete(email);
 
-    const isTimeout =
-      err?.code === "ETIMEDOUT" ||
-      err?.code === "ESOCKET" ||
-      err?.code === "ENETUNREACH";
+    const msg = String(err?.message || "").toLowerCase();
+    const isConfig = err?.code === "MISSING_API_KEY";
     const isAuth =
-      err?.code === "EAUTH" || err?.responseCode === 535;
+      err?.statusCode === 401 ||
+      err?.statusCode === 403 ||
+      msg.includes("api key") ||
+      [
+        "missing_api_key",
+        "invalid_api_Key",
+        "invalid_access",
+        "invalid_from_address",
+      ].includes(err?.name);
 
     let status = 500;
     let error = "Could not send the email. Please try again later.";
 
-    if (isAuth) {
+    if (isConfig || isAuth) {
       status = 503;
       error =
-        "Email service authentication failed. Contact the site owner.";
-    } else if (isTimeout) {
-      error =
-        "Email service timed out. Please try again in a few minutes.";
+        "Email service is not configured correctly. Contact the site owner.";
     }
 
     return res.status(status).json({ ok: false, error });
@@ -505,20 +446,10 @@ async function handleContact(req, res) {
     });
   }
 
-  const to = process.env.MAIL_TO;
-  const { from } = getMailEnv();
+  const to = process.env.MAIL_TO?.trim();
 
-  if (!to || !isMailConfigured()) {
-    console.error("[contact] Missing MAIL_TO or SMTP configuration.");
-    return res.status(503).json({
-      ok: false,
-      error: "Email is not configured on the server. Try again later.",
-    });
-  }
-
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.error("[contact] Transporter unavailable.");
+  if (!to || !isResendConfigured()) {
+    console.error("[contact] Missing MAIL_TO or RESEND_API_KEY.");
     return res.status(503).json({
       ok: false,
       error: "Email is not configured on the server. Try again later.",
@@ -528,8 +459,7 @@ async function handleContact(req, res) {
   const subject = `Portfolio contact from ${nameStr}`;
 
   try {
-    await transporter.sendMail({
-      from: `"Portfolio site" <${from}>`,
+    await sendContactEmail({
       to,
       replyTo: emailStr,
       subject,
@@ -539,7 +469,7 @@ async function handleContact(req, res) {
       )}&gt;</p><p>${escapeHtml(messageStr).replace(/\n/g, "<br>")}</p>`,
     });
   } catch (err) {
-    logSmtpError("[contact] sendMail", err);
+    logResendError("[contact] sendContactEmail", err);
     return res.status(500).json({
       ok: false,
       error: "Could not send your message. Please try again later.",
@@ -555,12 +485,10 @@ app.post("/contact", contactIpLimiter, handleContact);
 app.use("/contact-ui", express.static(contactUiDir));
 app.use(express.static(rootDir));
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`Portfolio server listening on port ${PORT}`);
   console.log(
     `[boot] NODE_ENV=${process.env.NODE_ENV || "development"} RENDER=${process.env.RENDER || "false"} trust_proxy=${app.get("trust proxy")}`
   );
-  if (process.env.SMTP_VERIFY_ON_START !== "false") {
-    await verifyTransporterOnStartup();
-  }
+  logResendBoot();
 });

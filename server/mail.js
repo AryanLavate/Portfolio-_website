@@ -1,21 +1,15 @@
-import dns from "node:dns";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
-const LOG = "[mail]";
+const LOG = "[resend]";
 
-const SMTP_HOST = "smtp.gmail.com";
-const SMTP_PORT = 465;
-const SMTP_TIMEOUT_MS = 10_000;
+let resendClient = null;
 
-/** DNS-level IPv4 — complements `family: 4` on the socket (fixes Render IPv6 egress). */
-function ipv4Lookup(hostname, options, callback) {
-  dns.lookup(hostname, { ...options, family: 4 }, callback);
-}
-
-function normalizeAppPassword(pass) {
-  return String(pass || "")
-    .replace(/\s+/g, "")
-    .trim();
+function getResend() {
+  if (resendClient) return resendClient;
+  const key = String(process.env.RESEND_API_KEY || "").trim();
+  if (!key) return null;
+  resendClient = new Resend(key);
+  return resendClient;
 }
 
 export function maskEmail(email) {
@@ -25,102 +19,194 @@ export function maskEmail(email) {
   return `${e.slice(0, 2)}***${e.slice(at)}`;
 }
 
-/**
- * EMAIL_USER / EMAIL_PASS are primary (Render).
- * SMTP_USER / SMTP_PASS kept for backward compatibility.
- */
-export function getMailEnv() {
-  const user = String(
-    process.env.EMAIL_USER || process.env.SMTP_USER || ""
+export function getResendFrom() {
+  return String(
+    process.env.RESEND_FROM || "onboarding@resend.dev"
   ).trim();
-  const pass = normalizeAppPassword(
-    process.env.EMAIL_PASS || process.env.SMTP_PASS
-  );
-  const from = String(
-    process.env.MAIL_FROM || process.env.EMAIL_USER || user
-  ).trim();
-  return { user, pass, from };
 }
 
-export function isMailConfigured() {
-  const { user, pass, from } = getMailEnv();
-  return Boolean(user && pass && from);
+export function isResendConfigured() {
+  return Boolean(String(process.env.RESEND_API_KEY || "").trim());
 }
 
-let transporterInstance = null;
-
-/**
- * Explicit Gmail SMTP (no `service: "gmail"`). IPv4-only for Render.
- */
-export function getTransporter() {
-  if (transporterInstance) return transporterInstance;
-
-  const { user, pass } = getMailEnv();
-  if (!user || !pass) {
-    console.warn(
-      `${LOG} EMAIL_USER/EMAIL_PASS (or SMTP_USER/SMTP_PASS) missing — transporter not created.`
-    );
-    return null;
-  }
-
-  transporterInstance = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: true,
-    family: 4,
-    lookup: ipv4Lookup,
-    auth: {
-      user,
-      pass,
-    },
-    connectionTimeout: SMTP_TIMEOUT_MS,
-    greetingTimeout: SMTP_TIMEOUT_MS,
-    socketTimeout: SMTP_TIMEOUT_MS,
-    tls: {
-      minVersion: "TLSv1.2",
-      servername: SMTP_HOST,
-    },
+export function logResendError(context, err) {
+  const message = err?.message ?? String(err);
+  const name = err?.name;
+  const statusCode = err?.statusCode ?? err?.status;
+  console.error(`${LOG} ${context} failed:`, {
+    message,
+    name,
+    statusCode,
   });
-
-  console.info(
-    `${LOG} Transporter ready: ${SMTP_HOST}:${SMTP_PORT} secure=true family=4 timeouts=${SMTP_TIMEOUT_MS}ms user=${user}`
-  );
-
-  return transporterInstance;
-}
-
-export function logSmtpError(context, err) {
-  const details = {
-    message: err?.message,
-    code: err?.code,
-    errno: err?.errno,
-    syscall: err?.syscall,
-    address: err?.address,
-    port: err?.port,
-    response: err?.response,
-    responseCode: err?.responseCode,
-    command: err?.command,
-  };
-  console.error(`${LOG} ${context} failed:`, details);
   if (process.env.NODE_ENV !== "production" && err?.stack) {
     console.error(err.stack);
   }
 }
 
-export async function verifyTransporterOnStartup() {
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.error(`${LOG} Startup verify skipped — email env not configured.`);
-    return false;
+/** @param {{ message: string; name: string }} error */
+function throwFromResendError(error) {
+  const e = new Error(error.message || "Resend API error");
+  e.name = error.name || "ResendError";
+  if (
+    error.name === "missing_api_key" ||
+    error.name === "invalid_api_Key" ||
+    error.name === "invalid_access"
+  ) {
+    e.statusCode = 401;
+  }
+  if (
+    error.name === "invalid_from_address" ||
+    error.name === "validation_error"
+  ) {
+    e.statusCode = 403;
+  }
+  throw e;
+}
+
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildOtpEmailHtml(otp) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify Your Email</title>
+</head>
+<body style="margin:0;background:#0b0f14;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#e8eef7;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:520px;background:#121826;border-radius:16px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 20px 60px rgba(0,0,0,0.45);">
+          <tr>
+            <td style="padding:28px 28px 8px 28px;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:#7dd3fc;">Portfolio</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 8px 28px;font-size:22px;font-weight:650;line-height:1.25;">Email Verification</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 20px 28px;font-size:15px;line-height:1.6;color:#c7d2fe;">
+              Your one-time code is below. It expires in <strong>5 minutes</strong>.
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:8px 28px 28px 28px;">
+              <div style="display:inline-block;padding:18px 28px;border-radius:14px;background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid rgba(125,211,252,0.35);font-size:28px;font-weight:700;letter-spacing:0.35em;color:#f8fafc;">
+                ${escapeHtml(otp)}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 28px 28px 28px;font-size:13px;line-height:1.6;color:#94a3b8;">
+              If you did not request this, you can ignore this email.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
+ * Sends OTP verification email via Resend HTTP API (no SMTP).
+ * @param {string} email Recipient address (normalized)
+ * @param {string} otp Six-digit code
+ * @returns {Promise<{ id?: string }>}
+ */
+export async function sendOtpEmail(email, otp) {
+  const resend = getResend();
+  if (!resend) {
+    const err = new Error("RESEND_API_KEY is not configured");
+    err.code = "MISSING_API_KEY";
+    throw err;
   }
 
+  const from = getResendFrom();
+
   try {
-    console.info(`${LOG} Verifying Gmail SMTP over IPv4...`);
-    await transporter.verify();
-    console.info(`${LOG} SMTP verify OK.`);
-    return true;
+    console.info(`${LOG} Sending OTP to ${maskEmail(email)} from ${from}`);
+
+    const { data, error } = await resend.emails.send({
+      from: `Portfolio <${from}>`,
+      to: email,
+      subject: "Your OTP Code",
+      text: `Your verification OTP is: ${otp}\n\nThis code expires in 5 minutes.`,
+      html: buildOtpEmailHtml(otp),
+    });
+
+    if (error) {
+      throwFromResendError(error);
+    }
+
+    console.info(`${LOG} OTP email sent`, {
+      id: data?.id,
+      to: maskEmail(email),
+    });
+
+    return data ?? {};
   } catch (err) {
-    logSmtpError("Startup verify", err);
-    return false;
+    logResendError("sendOtpEmail", err);
+    throw err;
+  }
+}
+
+/**
+ * Contact form notification (replaces previous SMTP sendMail).
+ */
+export async function sendContactEmail({
+  to,
+  replyTo,
+  subject,
+  text,
+  html,
+}) {
+  const resend = getResend();
+  if (!resend) {
+    const err = new Error("RESEND_API_KEY is not configured");
+    err.code = "MISSING_API_KEY";
+    throw err;
+  }
+
+  const from = getResendFrom();
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `Portfolio site <${from}>`,
+      to,
+      replyTo,
+      subject,
+      text,
+      html,
+    });
+
+    if (error) {
+      throwFromResendError(error);
+    }
+
+    console.info(`${LOG} Contact email sent`, { id: data?.id, to });
+    return data ?? {};
+  } catch (err) {
+    logResendError("sendContactEmail", err);
+    throw err;
+  }
+}
+
+export function logResendBoot() {
+  if (isResendConfigured()) {
+    console.info(
+      `${LOG} API key loaded (from=${getResendFrom()}). Resend HTTP API — no SMTP.`
+    );
+  } else {
+    console.warn(
+      `${LOG} RESEND_API_KEY missing — OTP and contact email will fail until set.`
+    );
   }
 }
