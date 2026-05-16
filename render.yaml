@@ -1,4 +1,4 @@
-# Render Blueprint: API (Node). Set secrets in the Render dashboard (SMTP, VERIFICATION_SECRET, CORS_ORIGIN).
+# Render Blueprint: API (Node). Set secrets in the Render dashboard (RESEND_API_KEY, MAIL_TO, VERIFICATION_SECRET, CORS_ORIGIN).
 # https://render.com/docs/blueprint-specification
 services:
   - type: web
