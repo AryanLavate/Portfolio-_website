@@ -1,5 +1,9 @@
-# Render Blueprint: API (Node). Set secrets in the Render dashboard (RESEND_API_KEY, MAIL_TO, VERIFICATION_SECRET, CORS_ORIGIN).
-# https://render.com/docs/blueprint-specification
+# Render Blueprint — portfolio API
+# Docs: https://render.com/docs/blueprint-specification
+#
+# Set these secrets in the Render dashboard (Environment tab):
+#   RESEND_API_KEY, MAIL_TO, MAIL_FROM, VERIFICATION_SECRET, CORS_ORIGIN
+
 services:
   - type: web
     name: portfolio-api
@@ -7,7 +11,7 @@ services:
     plan: free
     rootDir: server
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node index.js
     envVars:
       - key: NODE_VERSION
         value: "20"
