@@ -1,21 +1,19 @@
 {
   "name": "portfolio-api",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
+  "description": "Email OTP backend for Aryan's portfolio contact form",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
   "engines": {
     "node": ">=18"
   },
-  "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test:resend": "node scripts/send-test-email.mjs"
-  },
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "express-rate-limit": "^7.5.0",
-    "resend": "^4.8.0"
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "resend": "^4.0.0"
   }
 }
